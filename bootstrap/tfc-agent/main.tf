@@ -46,12 +46,22 @@ resource "synology_container_project" "tfc_agent" {
         TFC_AGENT_AUTO_UPDATE = "disabled"
       }
 
-      volumes = [{
-        type      = "bind"
-        source    = var.token_host_path
-        target    = "/run/secrets/tfc-agent-token"
-        read_only = true
-      }]
+      volumes = [
+        {
+          type      = "bind"
+          source    = var.token_host_path
+          target    = "/run/secrets/tfc-agent-token"
+          read_only = true
+        },
+        {
+          # Public CA certificate for shed's Vault, so runs can verify its TLS.
+          # Workspaces point VAULT_CACERT at this path.
+          type      = "bind"
+          source    = var.vault_ca_host_path
+          target    = "/etc/shed/vault-ca.crt"
+          read_only = true
+        },
+      ]
 
       # Hardening. The image already runs as the unprivileged tfc-agent user.
       cap_drop     = ["ALL"]

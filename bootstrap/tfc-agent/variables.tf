@@ -21,3 +21,9 @@ variable "token_host_path" {
   type        = string
   default     = "/volume1/docker/tfc-agent/secrets/agent-token"
 }
+
+variable "vault_ca_host_path" {
+  description = "Absolute path on the NAS of shed-vault's public CA certificate (not a secret), mounted read-only into the agent."
+  type        = string
+  default     = "/volume1/docker/tfc-agent/ca/shed-vault.crt"
+}
