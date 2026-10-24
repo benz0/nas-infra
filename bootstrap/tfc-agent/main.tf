@@ -22,6 +22,12 @@ resource "synology_container_project" "tfc_agent" {
       restart        = "unless-stopped"
       init           = true
 
+      # Use Docker's default bridge instead of a per-project network. On a
+      # per-project network, lookups go through Docker's embedded DNS
+      # (127.0.0.11), which timed out on shed. The default bridge hands the
+      # container shed's own resolvers directly.
+      network_mode = "bridge"
+
       # "$$" becomes "$" after compose interpolation, so the shell sees $(cat ...).
       entrypoint = [
         "/bin/sh",
