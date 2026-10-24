@@ -24,6 +24,9 @@ resource "vault_policy" "admin" {
       capabilities = ["create", "read", "update", "patch", "delete", "list", "sudo"]
     }
   EOT
+  # Vault refuses requests it cannot audit. Wait until the audit device has
+  # finished setting up, or a parallel create can fail with "internal error".
+  depends_on = [vault_audit.file]
 }
 
 # ---------------------------------------------------------------------------
@@ -37,6 +40,9 @@ resource "vault_jwt_auth_backend" "tfc" {
   description        = "HCP Terraform workload identity"
   oidc_discovery_url = "https://app.terraform.io"
   bound_issuer       = "https://app.terraform.io"
+  # Vault refuses requests it cannot audit. Wait until the audit device has
+  # finished setting up, or a parallel create can fail with "internal error".
+  depends_on = [vault_audit.file]
 }
 
 resource "vault_jwt_auth_backend_role" "shed_vault_config" {
@@ -64,6 +70,9 @@ resource "vault_auth_backend" "userpass" {
   type        = "userpass"
   path        = "userpass"
   description = "Human administrators"
+  # Vault refuses requests it cannot audit. Wait until the audit device has
+  # finished setting up, or a parallel create can fail with "internal error".
+  depends_on = [vault_audit.file]
 }
 
 # ---------------------------------------------------------------------------
@@ -71,6 +80,9 @@ resource "vault_auth_backend" "userpass" {
 # ---------------------------------------------------------------------------
 resource "vault_namespace" "agent" {
   path = "agent"
+  # Vault refuses requests it cannot audit. Wait until the audit device has
+  # finished setting up, or a parallel create can fail with "internal error".
+  depends_on = [vault_audit.file]
 }
 
 # ---------------------------------------------------------------------------
@@ -84,4 +96,7 @@ resource "vault_raft_snapshot_agent_config" "local" {
   path_prefix      = "/vault/file/snapshots"
   storage_type     = "local"
   local_max_space  = 2147483648 # 2 GiB
+  # Vault refuses requests it cannot audit. Wait until the audit device has
+  # finished setting up, or a parallel create can fail with "internal error".
+  depends_on = [vault_audit.file]
 }
