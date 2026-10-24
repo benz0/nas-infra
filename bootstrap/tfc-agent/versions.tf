@@ -13,9 +13,12 @@ terraform {
   }
 
   required_providers {
+    # Self-built from the provider's main branch with a patched API library,
+    # published to the private registry (scripts/publish-provider.sh).
+    # Pre-release versions must be pinned exactly.
     synology = {
-      source  = "synology-community/synology"
-      version = "~> 0.6.11"
+      source  = "app.terraform.io/derpwagon-lab/synology"
+      version = "0.6.12-shed.1"
     }
   }
 }
