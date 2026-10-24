@@ -15,6 +15,10 @@ resource "synology_container_project" "tfc_agent" {
   share_path = "/docker/tfc-agent"
   run        = true
 
+  # Set explicitly: when left unset, the provider returns an empty map after
+  # an update and Terraform reports "inconsistent result after apply".
+  metadata = {}
+
   services = {
     "tfc-agent" = {
       image          = "hashicorp/tfc-agent:${var.tfc_agent_version}"
