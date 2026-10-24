@@ -11,16 +11,21 @@ Terraform workspace `shed-bootstrap`.
   (Settings > General). If it runs remotely, the plan can't reach the NAS.
 - `terraform login` completed on your Mac.
 - A DSM account in the Administrators group (Container Manager has no finer-grained role).
-- The **self-built Synology provider** (see below). Release 0.6.11 can't manage
-  projects on DSM 7.3.
+- Access to the private registry provider `app.terraform.io/derpwagon-lab/synology`
+  (see below). Release 0.6.11 can't manage projects on DSM 7.3.
 - A **DSM firewall rule allowing Docker networks** (see below).
 - The agent token written to `/volume1/docker/tfc-agent/secrets/agent-token` on the NAS.
   Terraform never sees it.
 
 ## Self-built Synology provider
 
-Release 0.6.11 (April 2026) predates fixes that DSM 7.3 needs. Build the
-provider from `main` against a patched copy of its API library:
+Release 0.6.11 (April 2026) predates fixes that DSM 7.3 needs. This config uses
+a build of the provider's `main` branch, against a patched copy of its API
+library, published to the HCP Terraform private registry as
+`app.terraform.io/derpwagon-lab/synology`. Terraform installs it like any other
+provider; no local overrides are needed.
+
+To build and publish a new version:
 
 ```bash
 # Library: same version the provider pins, with the per-call timeout raised
@@ -34,23 +39,13 @@ git clone https://github.com/synology-community/terraform-provider-synology.git 
 cd ~/code/terraform-provider-synology
 git checkout 6219694919bad2be5b0cd3f8b3c5ea02c11452ce
 go mod edit -replace github.com/synology-community/go-synology=$HOME/code/go-synology
-mkdir -p ~/terraform-providers
-go build -o ~/terraform-providers/terraform-provider-synology .
+
+# Build, sign and publish (from the nas-infra repo)
+PROVIDER_SRC=~/code/terraform-provider-synology VERSION=<new version> ./scripts/publish-provider.sh
 ```
 
-Then tell Terraform to use it, in `~/.terraformrc`:
-
-```hcl
-provider_installation {
-  dev_overrides {
-    "registry.terraform.io/synology-community/synology" = "/Users/<you>/terraform-providers"
-  }
-  direct {}
-}
-```
-
-Terraform prints a "development overrides are in effect" warning on every run.
-That is expected. Remove the override once a release includes these fixes.
+Then update the pinned `version` in `versions.tf`. Switch back to the public
+registry once a release includes these fixes.
 
 ## DSM firewall and Docker
 
@@ -102,6 +97,6 @@ unset SYNOLOGY_PASSWORD SYNOLOGY_OTP_SECRET
 | `services` rendered unredacted into `content` (plan output and state) | By design | Never put secrets in `environment`; token is a mounted file |
 | `logging` options dropped (`logging: {}`) | Open | Not used |
 | No read-only root filesystem option | Open | Not used |
-| Stop/build/restart replies from DSM 7.3 not parsed ("unable to decode response") | Fixed in go-synology #84 and provider main (#218), unreleased | Self-built provider |
+| Stop/build/restart replies from DSM 7.3 not parsed ("unable to decode response") | Fixed in go-synology #84 and provider main (#218), unreleased | Private registry build |
 | Fixed 30-second limit per DSM call; a restart on the DS918+ takes about 60 seconds | Open | Patched library (10 minutes) |
 | `metadata` null vs empty map: "inconsistent result after apply" | Open | `metadata = {}` set explicitly |
