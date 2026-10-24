@@ -59,7 +59,7 @@ resource "synology_container_project" "vault" {
       entrypoint = [
         "/bin/sh",
         "-c",
-        "printf '%s' \"$$VAULT_LOCAL_CONFIG\" > /vault/config/local.json && exec vault server -config=/vault/config",
+        "mkdir -p /vault/file/raft && printf '%s' \"$$VAULT_LOCAL_CONFIG\" > /vault/config/local.json && exec vault server -config=/vault/config",
       ]
 
       environment = {

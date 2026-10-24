@@ -9,7 +9,7 @@ Manager project by the HCP Terraform agent (workspace `shed-vault`).
    Store its encryption key in the 1Password `shed-recovery` vault. Create:
    - `/volume1/hcv-data/config/tls/`
    - `/volume1/hcv-data/config/license/`
-   - `/volume1/hcv-data/data/raft/`
+   - `/volume1/hcv-data/data/` (Vault creates `raft/` inside it at start)
    - `/volume1/hcv-data/logs/`
 2. **TLS certificate** written to `config/tls/vault.crt` and `config/tls/vault.key`
    (self-signed for now; replaced by Vault PKI or Let's Encrypt later).
