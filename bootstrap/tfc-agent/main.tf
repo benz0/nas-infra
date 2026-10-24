@@ -31,6 +31,9 @@ resource "synology_container_project" "tfc_agent" {
 
       environment = {
         TFC_AGENT_NAME = var.agent_name
+        # The image tag is pinned; upgrades happen by changing
+        # tfc_agent_version and applying, not by the agent updating itself.
+        TFC_AGENT_AUTO_UPDATE = "disabled"
       }
 
       volumes = [{
