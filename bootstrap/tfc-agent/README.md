@@ -11,6 +11,19 @@ Terraform workspace `shed-bootstrap`.
   (Settings > General). If it runs remotely, the plan can't reach shed.
 - `terraform login` completed on your Mac.
 - A DSM account in the Administrators group (Container Manager has no finer-grained role).
+- The agent token written to `/volume1/docker/tfc-agent/secrets/agent-token` on the NAS
+  (see below). Terraform never sees it.
+
+## Put the token on the NAS
+
+Mount the `docker` share on your Mac (Finder > Go > Connect to Server, `smb://<shed-address>/docker`), then:
+
+```bash
+mkdir -p /Volumes/docker/tfc-agent/secrets
+op item get '<token item>' --vault <vault> --fields credential --reveal > /Volumes/docker/tfc-agent/secrets/agent-token
+```
+
+The command line contains no secret, so nothing lands in shell history.
 
 ## Run
 
@@ -20,20 +33,24 @@ cd bootstrap/tfc-agent
 export SYNOLOGY_HOST="https://<shed-address>:<dsm-https-port>"
 export SYNOLOGY_USER="<dsm-admin-user>"
 export SYNOLOGY_PASSWORD="$(op read 'op://<vault>/<item>/password')"
+export SYNOLOGY_OTP_SECRET="$(op read 'op://<vault>/<item>/one-time password' | sed -E 's/.*[?&]secret=([^&]+).*/\1/')"
 export SYNOLOGY_SKIP_CERT_CHECK="true"
-export TF_VAR_tfc_agent_token="$(op read 'op://<vault>/<item>/credential')"
 
 terraform init
 terraform plan
 terraform apply
 
-unset SYNOLOGY_PASSWORD TF_VAR_tfc_agent_token
+unset SYNOLOGY_PASSWORD SYNOLOGY_OTP_SECRET
 ```
 
-## Known trade-offs
+## Known provider issues (synology-community/synology 0.6.11)
 
-- The agent token is passed as an environment variable, so it is stored
-  (encrypted) in this workspace's state in HCP Terraform. It moves behind
-  Vault in a later phase.
-- The provider's service schema has no read-only root filesystem option, so
-  hardening here is dropped capabilities, no-new-privileges and a memory cap.
+- **Credentials in URLs.** Login sends user, password and OTP code as GET query
+  parameters and prints that URL when login fails. Treat any failed-login output
+  as containing the password. Credentials can also appear in DSM web server logs.
+- **Compose content is not redacted.** Everything in `services` is rendered into
+  the `content` attribute, shown in plan output and stored in state. Never put a
+  secret in `environment`.
+- **Logging options are dropped.** A `logging` block renders as `logging: {}`,
+  so log rotation must be set elsewhere.
+- **No read-only root filesystem option** in the service schema.

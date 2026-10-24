@@ -1,9 +1,3 @@
-variable "tfc_agent_token" {
-  description = "HCP Terraform agent pool token for the 'shed' pool. Supply via TF_VAR_tfc_agent_token at run time; never put it in a file."
-  type        = string
-  sensitive   = true
-}
-
 variable "tfc_agent_version" {
   description = "hashicorp/tfc-agent image tag. Pinned so upgrades are deliberate."
   type        = string
@@ -20,4 +14,10 @@ variable "memory_limit" {
   description = "Container memory cap. HCP Terraform agents need at least 2 GB."
   type        = string
   default     = "2g"
+}
+
+variable "token_host_path" {
+  description = "Absolute path on the NAS of the file holding the agent pool token. Created by hand, never by Terraform, so the token never enters config, plan output or state."
+  type        = string
+  default     = "/volume1/docker/tfc-agent/secrets/agent-token"
 }
