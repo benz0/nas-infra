@@ -49,19 +49,29 @@ resource "synology_container_project" "vault" {
       image          = "hashicorp/vault-enterprise:${var.vault_version}"
       container_name = "shed-vault"
       restart        = "unless-stopped"
-      command        = ["server"]
+      init           = true
 
-      # The image's entrypoint writes this JSON to /vault/config/local.json.
+      # Bypass the image's entrypoint, which always switches to the "vault"
+      # user. DSM enforces the shared folder's ACL rather than Linux ownership,
+      # and that user is not on the ACL, so it is refused. Instead: write the
+      # rendered config, then run Vault directly. "$$" becomes "$" after
+      # compose interpolation.
+      entrypoint = [
+        "/bin/sh",
+        "-c",
+        "printf '%s' \"$$VAULT_LOCAL_CONFIG\" > /vault/config/local.json && exec vault server -config=/vault/config",
+      ]
+
       environment = {
         VAULT_LOCAL_CONFIG = jsonencode(local.vault_config)
       }
 
-      # Start as root only so the entrypoint can chown the bind mounts, then
-      # it drops to the unprivileged "vault" user via su-exec. These three
-      # capabilities are all that step needs; everything else is dropped.
+      # Runs as root (the only identity the share's ACL admits besides DSM
+      # users) but with EVERY capability dropped and no-new-privileges, so it
+      # can do little beyond reading and writing its own three mounts.
+      # Hardening step planned: a dedicated DSM user on the ACL instead.
       user         = "0:0"
       cap_drop     = ["ALL"]
-      cap_add      = ["CHOWN", "SETUID", "SETGID"]
       security_opt = ["no-new-privileges:true"]
       mem_limit    = var.memory_limit
 

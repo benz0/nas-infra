@@ -36,11 +36,13 @@ unseal with any three keys. After a reboot Vault starts sealed; unseal again.
 
 ## Design notes
 
-- **Config** is rendered as JSON and passed in `VAULT_LOCAL_CONFIG`; the image
-  writes it to `/vault/config/local.json`. It contains no secrets.
-- **Privileges**: the container starts as root only so the image's entrypoint
-  can chown the bind mounts, then drops to the `vault` user. Capabilities are
-  limited to CHOWN, SETUID and SETGID; no-new-privileges is set.
+- **Config** is rendered as JSON and passed in `VAULT_LOCAL_CONFIG`; the
+  container writes it to `/vault/config/local.json` at start. It contains no secrets.
+- **Privileges**: DSM enforces shared-folder ACLs rather than Linux ownership,
+  so the image's usual "chown, then switch to the vault user" fails with
+  permission denied. Vault therefore runs as root with **all** capabilities
+  dropped and no-new-privileges. Planned hardening: a dedicated no-login DSM
+  user (`vault-svc`) on the `hcv-data` ACL, with the container run as its UID.
 - **`disable_mlock = true`**, as recommended for integrated storage.
 - **Backups** use Vault's automated snapshots (configured in Vault, phase 4),
   not filesystem snapshots of a live raft database.
