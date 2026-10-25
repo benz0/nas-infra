@@ -36,5 +36,5 @@ variable "retention" {
 variable "revision" {
   description = "Bump to re-send every call to DSM even when nothing else changed. The API calls are blind, so this is the way to repeat them."
   type        = number
-  default     = 2
+  default     = 3
 }
