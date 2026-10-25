@@ -1,0 +1,158 @@
+diff --git a/synology/provider/api_invoke.go b/synology/provider/api_invoke.go
+new file mode 100644
+index 0000000..ce7f967
+--- /dev/null
++++ b/synology/provider/api_invoke.go
+@@ -0,0 +1,43 @@
++package provider
++
++import (
++	"context"
++	"net/http"
++	"strconv"
++
++	"github.com/hashicorp/go-retryablehttp"
++	"github.com/synology-community/go-synology/pkg/api"
++)
++
++// invokeAPI calls a DSM web API with GET.
++//
++// It replaces go-synology's api.GetQuery for synology_api, which has two bugs:
++//  1. It writes each request's query into the client's shared base URL
++//     (u := c.BaseUrl(); u.RawQuery = ...), so state leaks between calls.
++//  2. It merges that base-URL query OVER the new call's api/method/version,
++//     so after the first call every later call reuses the first call's method.
++//     A set_schedule silently became a get_schedule and reported success.
++//
++// Here the base URL is copied, never modified, and the call's own api, method,
++// version and parameters always win over anything in the base query (which
++// only carries the session: _sid and SynoToken).
++func invokeAPI(ctx context.Context, c api.Api, params map[string]string, method api.Method) (*map[string]any, error) {
++	u := *c.BaseUrl()
++	q := u.Query()
++	q.Set("api", method.API)
++	q.Set("method", method.Method)
++	q.Set("version", strconv.Itoa(method.Version))
++	for k, v := range params {
++		q.Set(k, v)
++	}
++	u.RawQuery = q.Encode()
++
++	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
++	if err != nil {
++		return nil, err
++	}
++	if tok := c.Credentials().Token; tok != "" {
++		req.Header.Set("X-SYNO-TOKEN", tok)
++	}
++	return api.Do[map[string]any](c.Client(), req, method.ErrorSummaries)
++}
+diff --git a/synology/provider/api_invoke_test.go b/synology/provider/api_invoke_test.go
+new file mode 100644
+index 0000000..0a9321b
+--- /dev/null
++++ b/synology/provider/api_invoke_test.go
+@@ -0,0 +1,54 @@
++package provider
++
++import (
++	"context"
++	"fmt"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	client "github.com/synology-community/go-synology"
++	"github.com/synology-community/go-synology/pkg/api"
++)
++
++// Two calls in a row must each send their own method, and the client's base
++// URL must still carry only the session afterwards.
++func TestInvokeAPIDoesNotLeakBetweenCalls(t *testing.T) {
++	var seen []string
++	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		q := r.URL.Query()
++		seen = append(seen, fmt.Sprintf("%s|%s|%s|%s", q.Get("method"), q.Get("name"), q.Get("_sid"), r.Header.Get("X-SYNO-TOKEN")))
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`{"success":true,"data":{"ok":1}}`))
++	}))
++	defer srv.Close()
++
++	c, err := client.New(api.Options{Host: srv.URL, VerifyCert: false, RetryLimit: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	cc := c.(*client.Client)
++	cc.ImportSession(api.Session{SessionID: "SID", SynoToken: "TOK"})
++	before := cc.BaseUrl().String()
++
++	ctx := context.Background()
++	m := func(name string) api.Method {
++		return api.Method{API: "SYNO.Core.Share.Snapshot", Method: name, Version: 1}
++	}
++	if _, err := invokeAPI(ctx, cc, map[string]string{"name": "git"}, m("get_schedule")); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := invokeAPI(ctx, cc, map[string]string{"name": "homes"}, m("set_schedule")); err != nil {
++		t.Fatal(err)
++	}
++
++	want := []string{"get_schedule|git|SID|TOK", "set_schedule|homes|SID|TOK"}
++	for i := range want {
++		if seen[i] != want[i] {
++			t.Errorf("call %d sent %q, want %q", i, seen[i], want[i])
++		}
++	}
++	if after := cc.BaseUrl().String(); after != before {
++		t.Errorf("base URL changed: %q -> %q", before, after)
++	}
++}
+diff --git a/synology/provider/api_resource.go b/synology/provider/api_resource.go
+index 1a64710..6270de7 100644
+--- a/synology/provider/api_resource.go
++++ b/synology/provider/api_resource.go
+@@ -85,8 +85,6 @@ func (a *ApiResource) Create(
+ 		return
+ 	}
+ 
+-	parameters := getParams(params)
+-
+ 	method := api.Method{
+ 		API:            data.API.ValueString(),
+ 		Method:         data.Method.ValueString(),
+@@ -94,7 +92,7 @@ func (a *ApiResource) Create(
+ 		ErrorSummaries: api.GlobalErrors,
+ 	}
+ 
+-	result, err := api.GetQuery[map[string]any](a.client, ctx, parameters, method)
++	result, err := invokeAPI(ctx, a.client, params, method)
+ 	if err != nil {
+ 		resp.Diagnostics.AddError("Failed to invoke API", err.Error())
+ 		return
+@@ -136,7 +134,7 @@ func (a *ApiResource) Delete(
+ 			return
+ 		}
+ 
+-		result, err := api.GetQuery[map[string]any](a.client, ctx, getParams(params), api.Method{
++		result, err := invokeAPI(ctx, a.client, params, api.Method{
+ 			API:            data.API.ValueString(),
+ 			Method:         data.Method.ValueString(),
+ 			Version:        int(data.Version.ValueInt64()),
+@@ -276,8 +274,6 @@ func (a *ApiResource) Update(
+ 		return
+ 	}
+ 
+-	parameters := getParams(params)
+-
+ 	method := api.Method{
+ 		API:            plan.API.ValueString(),
+ 		Method:         plan.Method.ValueString(),
+@@ -285,7 +281,7 @@ func (a *ApiResource) Update(
+ 		ErrorSummaries: api.GlobalErrors,
+ 	}
+ 
+-	result, err := api.GetQuery[map[string]any](a.client, ctx, parameters, method)
++	result, err := invokeAPI(ctx, a.client, params, method)
+ 	if err != nil {
+ 		resp.Diagnostics.AddError("Failed to invoke API", err.Error())
+ 		return
