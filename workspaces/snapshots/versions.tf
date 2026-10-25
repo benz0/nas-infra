@@ -6,7 +6,7 @@ terraform {
     # published to the private registry (scripts/publish-provider.sh).
     synology = {
       source  = "app.terraform.io/derpwagon-lab/synology"
-      version = "0.6.12-shed.1"
+      version = "0.6.12-shed.2"
     }
   }
 }
