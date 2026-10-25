@@ -15,6 +15,10 @@
 #
 # synology_api can't detect changes made in the DSM UI. Change these settings
 # here, not in Snapshot Replication.
+#
+# Run with TFE_PARALLELISM=1 (workspace environment variable). With parallel
+# requests the provider mixed up DSM replies: one share's get_schedule returned
+# another share's task_id, and writes reported success without taking effect.
 
 locals {
   # DSM retention bitmask: 1 = minimum, 2 = hourly, 4 = daily, 8 = weekly.
@@ -36,7 +40,7 @@ locals {
 # Changes whenever a share's schedule or the retention policy changes.
 resource "terraform_data" "settings" {
   for_each = var.shares
-  input    = sha256(jsonencode([local.schedule[each.key], var.retention]))
+  input    = sha256(jsonencode([local.schedule[each.key], var.retention, var.revision]))
 }
 
 # Read-only: the share's current snapshot task ID (-1 if it has none).
@@ -58,6 +62,23 @@ resource "synology_api" "current_schedule" {
 resource "synology_api" "schedule" {
   for_each = var.shares
 
+  lifecycle {
+    replace_triggered_by = [terraform_data.settings[each.key]]
+
+    # Guard: a real task ID belongs to exactly one share. A duplicate means DSM
+    # replies got crossed, and writing would overwrite another share's task.
+    precondition {
+      condition = (
+        synology_api.current_schedule[each.key].result.task_id == -1 ||
+        length([
+          for k, v in synology_api.current_schedule : k
+          if v.result.task_id == synology_api.current_schedule[each.key].result.task_id
+        ]) == 1
+      )
+      error_message = "Two shares reported the same snapshot task ID. Stopping before any write so no share's schedule overwrites another's."
+    }
+  }
+
   api     = "SYNO.Core.Share.Snapshot"
   method  = "set_schedule"
   version = 1
@@ -71,6 +92,10 @@ resource "synology_api" "schedule" {
 
 resource "synology_api" "retention" {
   for_each = var.shares
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.settings[each.key]]
+  }
 
   api     = "SYNO.DisasterRecovery.Retention"
   method  = "set"
