@@ -1,0 +1,136 @@
+diff --git a/synology/provider/api_resource.go b/synology/provider/api_resource.go
+index b001be4..1a64710 100644
+--- a/synology/provider/api_resource.go
++++ b/synology/provider/api_resource.go
+@@ -100,7 +100,7 @@ func (a *ApiResource) Create(
+ 		return
+ 	}
+ 
+-	objValue, err := util.GetValue(*result)
++	objValue, err := util.JSONValue(map[string]any(*result))
+ 	if err != nil {
+ 		resp.Diagnostics.AddError("Failed to get value", err.Error())
+ 		return
+@@ -147,7 +147,7 @@ func (a *ApiResource) Delete(
+ 			return
+ 		}
+ 
+-		objValue, err := util.GetValue(*result)
++		objValue, err := util.JSONValue(map[string]any(*result))
+ 		if err != nil {
+ 			resp.Diagnostics.AddError("Failed to get value", err.Error())
+ 			return
+@@ -291,7 +291,7 @@ func (a *ApiResource) Update(
+ 		return
+ 	}
+ 
+-	objValue, err := util.GetValue(*result)
++	objValue, err := util.JSONValue(map[string]any(*result))
+ 	if err != nil {
+ 		resp.Diagnostics.AddError("Failed to get value", err.Error())
+ 		return
+diff --git a/synology/util/json_value.go b/synology/util/json_value.go
+new file mode 100644
+index 0000000..e2783fa
+--- /dev/null
++++ b/synology/util/json_value.go
+@@ -0,0 +1,70 @@
++package util
++
++import (
++	"fmt"
++	"math/big"
++	"sort"
++
++	"github.com/hashicorp/terraform-plugin-framework/attr"
++	"github.com/hashicorp/terraform-plugin-framework/types"
++)
++
++// JSONValue converts a decoded JSON value (map[string]any, []any, string,
++// float64, bool, nil) into a Terraform attr.Value. Unlike mapValue it handles
++// nested objects, nulls and mixed-type arrays, which DSM responses contain.
++func JSONValue(v any) (attr.Value, error) {
++	switch t := v.(type) {
++	case nil:
++		return types.StringNull(), nil
++	case string:
++		return types.StringValue(t), nil
++	case bool:
++		return types.BoolValue(t), nil
++	case float64:
++		return types.NumberValue(bigFloat(t)), nil
++	case int:
++		return types.NumberValue(bigFloat(float64(t))), nil
++	case int64:
++		return types.NumberValue(bigFloat(float64(t))), nil
++	case map[string]any:
++		keys := make([]string, 0, len(t))
++		for k := range t {
++			keys = append(keys, k)
++		}
++		sort.Strings(keys)
++		attrTypes := map[string]attr.Type{}
++		attrValues := map[string]attr.Value{}
++		for _, k := range keys {
++			av, err := JSONValue(t[k])
++			if err != nil {
++				return nil, fmt.Errorf("%s: %w", k, err)
++			}
++			attrTypes[k] = av.Type(nil)
++			attrValues[k] = av
++		}
++		ov, diags := types.ObjectValue(attrTypes, attrValues)
++		if diags.HasError() {
++			return nil, fmt.Errorf("object: %v", diags)
++		}
++		return ov, nil
++	case []any:
++		elemTypes := make([]attr.Type, 0, len(t))
++		elems := make([]attr.Value, 0, len(t))
++		for i, e := range t {
++			av, err := JSONValue(e)
++			if err != nil {
++				return nil, fmt.Errorf("[%d]: %w", i, err)
++			}
++			elemTypes = append(elemTypes, av.Type(nil))
++			elems = append(elems, av)
++		}
++		tv, diags := types.TupleValue(elemTypes, elems)
++		if diags.HasError() {
++			return nil, fmt.Errorf("tuple: %v", diags)
++		}
++		return tv, nil
++	}
++	return nil, fmt.Errorf("unsupported JSON type %T", v)
++}
++
++func bigFloat(f float64) *big.Float { return big.NewFloat(f) }
+diff --git a/synology/util/json_value_test.go b/synology/util/json_value_test.go
+new file mode 100644
+index 0000000..0e1b304
+--- /dev/null
++++ b/synology/util/json_value_test.go
+@@ -0,0 +1,23 @@
++package util
++
++import (
++	"encoding/json"
++	"testing"
++)
++
++func TestJSONValueDSMSchedule(t *testing.T) {
++	body := `{"enable_snapshot_schedule":false,"schedule":{"date":"2026/10/24","date_type":0,"hour":0,"monthly_week":[],"repeat_hour_store_config":null,"week_name":"0,1,2,3,4,5,6"},"task_id":-1,"mixed":[1,"a",null]}`
++	var m map[string]any
++	if err := json.Unmarshal([]byte(body), &m); err != nil {
++		t.Fatal(err)
++	}
++	v, err := JSONValue(m)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Log(v.String())
++	var empty map[string]any
++	if _, err := JSONValue(map[string]any(empty)); err != nil {
++		t.Fatal(err)
++	}
++}
