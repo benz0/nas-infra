@@ -100,3 +100,16 @@ resource "vault_raft_snapshot_agent_config" "local" {
   # finished setting up, or a parallel create can fail with "internal error".
   depends_on = [vault_audit.file]
 }
+
+# KV v2 store for the agent's credentials, inside the agent namespace.
+# Secret VALUES are written with the Vault CLI, never in Terraform, so they
+# stay out of state.
+resource "vault_mount" "agent_kv" {
+  namespace   = vault_namespace.agent.path
+  path        = "kv"
+  type        = "kv"
+  options     = { version = "2" }
+  description = "Credentials used by the NAS agent (values written via CLI)"
+
+  depends_on = [vault_audit.file]
+}
