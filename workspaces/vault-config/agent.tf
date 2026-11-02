@@ -38,6 +38,9 @@ resource "vault_identity_oidc_role" "claude_agent" {
   key       = vault_identity_oidc_key.anthropic.name
   ttl       = 900 # 15 minutes; Anthropic caps its token at 2x what remains.
 
+  # Becomes the token's `aud` claim. Anthropic requires exactly this audience.
+  client_id = "https://api.anthropic.com"
+
   # Fixed claim the Anthropic federation rule matches on. The token's `sub` is
   # the agent's Vault entity ID, which only exists after its first login.
   template = jsonencode({ agent = "shed-claude" })
@@ -101,6 +104,6 @@ output "claude_agent_oidc_issuer" {
 }
 
 output "claude_agent_oidc_client_id" {
-  description = "The `aud` claim in the agent's identity tokens. Used in the Anthropic federation rule."
+  description = "The `aud` claim in the agent's identity tokens (Anthropic requires https://api.anthropic.com)."
   value       = vault_identity_oidc_role.claude_agent.client_id
 }
