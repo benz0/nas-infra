@@ -88,6 +88,12 @@ resource "vault_approle_auth_backend_role" "claude_agent" {
   token_ttl      = 3600
   token_max_ttl  = 14400
 
+  # Vault Agent keeps the unwrapped secret ID in memory and re-logs in every
+  # 4 hours (token_max_ttl), so it must be multi-use. 30-day expiry bounds how
+  # long a leaked one is useful; the container needs a fresh one at least monthly.
+  secret_id_ttl      = 2592000
+  secret_id_num_uses = 0
+
   # Only containers on the Docker networks may use the secret ID or the tokens.
   secret_id_bound_cidrs = var.agent_cidrs
   token_bound_cidrs     = var.agent_cidrs

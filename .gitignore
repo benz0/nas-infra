@@ -61,3 +61,5 @@ vault-init*.json
 .DS_Store
 .vscode/
 .idea/
+# Vault CA cert is copied into the build context at deploy time, not committed
+agent/vault-agent/shed-vault.crt

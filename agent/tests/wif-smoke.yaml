@@ -1,0 +1,30 @@
+# One-off end-to-end test: Vault AppRole -> identity token -> Anthropic WIF -> Claude Code.
+# Runs as agent-bot (uid 1040). Results: /volume1/vault-work/_agent/logs/wif-smoke.log
+services:
+  wif-smoke:
+    image: node:22-bookworm-slim
+    container_name: wif-smoke
+    user: "1040:100"
+    restart: "no"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HOME: /tmp/home
+      NODE_EXTRA_CA_CERTS: /work/_agent/ca/shed-vault.crt
+      VAULT_ADDR: https://192.168.86.60:8200
+      ROLE_ID: 24c02f16-8e75-6247-afa5-d1a4c2cbaa7b
+      ANTHROPIC_IDENTITY_TOKEN_FILE: /tmp/home/idtoken
+      ANTHROPIC_FEDERATION_RULE_ID: fdrl_01SudwhNKrWYGzaN6bjhmrrC
+      ANTHROPIC_ORGANIZATION_ID: 6b21235f-f5a4-4da0-9136-af5adafc97f5
+      ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01XnK9aaUU3HvppfdaN6ZvBD
+      ANTHROPIC_WORKSPACE_ID: wrkspc_01HBxspHY4xZFiADiXUgFT2T
+      DISABLE_AUTOUPDATER: "1"
+    volumes:
+      - /volume1/vault-work/_agent:/work/_agent
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /tmp/home
+        echo "installing Claude Code..." > /work/_agent/logs/wif-smoke-install.log
+        npm install --prefix /tmp/cc --no-audit --no-fund @anthropic-ai/claude-code >> /work/_agent/logs/wif-smoke-install.log 2>&1
+        node /work/_agent/tests/wif-smoke.mjs
