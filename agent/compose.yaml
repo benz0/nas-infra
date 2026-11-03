@@ -45,15 +45,13 @@ services:
     volumes:
       - tokens:/tokens:ro
       - agent-home:/home/agent
-      # Every share in scope. The NAS ACLs (not this file) block deletes and
+      # Every share in scope (photo and picture_storage were deleted 2026-10-25). The NAS ACLs (not this file) block deletes and
       # renames everywhere except vault-work, and block docker and hcv-data.
       - /volume1/docs:/shares/docs
       - /volume1/git:/shares/git
       - /volume1/homes:/shares/homes
       - /volume1/movies:/shares/movies
       - /volume1/NetBackup:/shares/NetBackup
-      - /volume1/photo:/shares/photo
-      - /volume1/picture_storage:/shares/picture_storage
       - /volume1/Plex:/shares/Plex
       - /volume1/PlexMediaServer:/shares/PlexMediaServer
       - /volume1/tv_shows:/shares/tv_shows
