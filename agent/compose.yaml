@@ -1,0 +1,71 @@
+# shed agent: Vault Agent sidecar + Claude Code runner.
+# Container Manager project path: /volume1/docker/shed-agent
+# (agent-bot has no access to the docker share, so it can't edit this file,
+# the Dockerfiles, or the Vault Agent config.)
+name: shed-agent
+
+services:
+  vault-agent:
+    build: ./vault-agent
+    image: shed/vault-agent:1
+    container_name: shed-vault-agent
+    user: "1040:100"
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    entrypoint: ["/bin/vault"]
+    command: ["agent", "-config=/vault/agent/agent.hcl"]
+    volumes:
+      # Wrapped secret ID drop point. Vault Agent deletes the file after reading.
+      - /volume1/vault-work/_agent/secrets:/secrets
+      - tokens:/tokens
+
+  agent:
+    build: ./agent
+    image: shed/agent:1
+    container_name: shed-agent
+    user: "1040:100"
+    restart: unless-stopped
+    depends_on: [vault-agent]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      ANTHROPIC_IDENTITY_TOKEN_FILE: /tokens/idtoken
+      ANTHROPIC_FEDERATION_RULE_ID: fdrl_01SudwhNKrWYGzaN6bjhmrrC
+      ANTHROPIC_ORGANIZATION_ID: 6b21235f-f5a4-4da0-9136-af5adafc97f5
+      ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01XnK9aaUU3HvppfdaN6ZvBD
+      ANTHROPIC_WORKSPACE_ID: wrkspc_01HBxspHY4xZFiADiXUgFT2T
+      DISABLE_AUTOUPDATER: "1"
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+      AGENT_MODEL: sonnet
+      AGENT_MAX_TURNS: "50"
+      AGENT_TIMEOUT_MINUTES: "30"
+    volumes:
+      - tokens:/tokens:ro
+      - agent-home:/home/agent
+      # Every share in scope. The NAS ACLs (not this file) block deletes and
+      # renames everywhere except vault-work, and block docker and hcv-data.
+      - /volume1/docs:/shares/docs
+      - /volume1/git:/shares/git
+      - /volume1/homes:/shares/homes
+      - /volume1/movies:/shares/movies
+      - /volume1/NetBackup:/shares/NetBackup
+      - /volume1/photo:/shares/photo
+      - /volume1/picture_storage:/shares/picture_storage
+      - /volume1/Plex:/shares/Plex
+      - /volume1/PlexMediaServer:/shares/PlexMediaServer
+      - /volume1/tv_shows:/shares/tv_shows
+      - /volume1/vault-personal:/shares/vault-personal
+      - /volume1/vault-work:/shares/vault-work
+
+volumes:
+  # Identity token lives in memory only.
+  tokens:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=1040,gid=100,mode=0750"
+  # Claude Code's home (~/.claude session transcripts) survives restarts.
+  agent-home:
